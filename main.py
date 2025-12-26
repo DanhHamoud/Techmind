@@ -5,7 +5,7 @@ import time
 import requests
 import json
 import re
-BOT_TOKEN = "8525525248:AAFjH3Ec4mNTsUyQpupV4oBkBUlLMcniSYc"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "5164001184"
 
 NEWS_FEEDS = [
