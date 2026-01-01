@@ -90,6 +90,7 @@ def check_feeds():
                 save_sent(sent_links)
 
 
-print("🚀 Bot started")
-check_feeds()
-send_telegram("✅ Bot test run successful!")
+if name == "__main__":
+    print("🚀 Bot started")
+    check_feeds()
+    send_telegram("✅ Bot test run successful!")
