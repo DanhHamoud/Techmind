@@ -1,13 +1,17 @@
 import os
-import time
 import json
 import re
 import requests
 import feedparser
 
+# ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
+if not BOT_TOKEN or not CHAT_ID:
+    raise ValueError("BOT_TOKEN or CHAT_ID not set in environment variables")
+
+# ====== FEEDS ======
 NEWS_FEEDS = [
     "https://aitnews.com/feed/",
     "https://techcrunch.com/feed/",
@@ -29,7 +33,7 @@ TECH_KEYWORDS = [
     "programming", "data", "robot", "cloud"
 ]
 
-
+# ====== HELPERS ======
 def load_sent():
     if os.path.exists(SENT_FILE):
         with open(SENT_FILE, "r", encoding="utf-8") as f:
@@ -44,11 +48,16 @@ def save_sent(sent_links):
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": message,
-        "disable_web_page_preview": False
-    })
+    response = requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": message,
+            "disable_web_page_preview": False,
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
 
 
 def is_tech_content(text):
@@ -62,6 +71,7 @@ def light_summary(text, max_sentences=2):
     return " ".join(sentences[:max_sentences])
 
 
+# ====== CORE ======
 def check_feeds():
     sent_links = load_sent()
 
@@ -78,19 +88,20 @@ def check_feeds():
 
             if is_tech_content(title + " " + summary):
                 tag = "🔬 Research" if "arxiv.org" in link else "🧠 Tech News"
-                msg = (
+                message = (
                     f"{tag}\n\n"
                     f"{title}\n\n"
                     f"📝 Summary:\n{light_summary(summary)}\n\n"
                     f"🔗 {link}"
                 )
 
-                send_telegram(msg)
+                send_telegram(message)
                 sent_links.add(link)
                 save_sent(sent_links)
 
 
-if name == "__main__":
+# ====== ENTRY POINT ======
+if __name__ == "__main__":
     print("🚀 Bot started")
     check_feeds()
     send_telegram("✅ Bot test run successful!")
