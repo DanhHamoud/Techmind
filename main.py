@@ -101,7 +101,7 @@ def check_feeds():
 
 
 # ====== ENTRY POINT ======
-if __name__ == "__main__":
+if __name__== "__main__":
     print("🚀 Bot started")
     check_feeds()
     send_telegram("✅ Bot test run successful!")
