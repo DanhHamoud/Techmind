@@ -1,16 +1,15 @@
 import os
-import json
 import re
 import requests
 import feedparser
+from datetime import datetime, timezone, timedelta
 
 # ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-RUN_MAIN = os.environ.get("RUN_MAIN", "true")  # متغير البيئة بدل __name__
+RUN_MAIN = os.environ.get("RUN_MAIN", "true")
 
-if not BOT_TOKEN or not CHAT_ID:
-    raise ValueError("BOT_TOKEN or CHAT_ID not set")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not set")
 
 # ====== FEEDS ======
 NEWS_FEEDS = [
@@ -25,7 +24,6 @@ RESEARCH_FEEDS = [
 ]
 
 ALL_FEEDS = NEWS_FEEDS + RESEARCH_FEEDS
-SENT_FILE = "sent_items.json"
 
 TECH_KEYWORDS = [
     "ai", "artificial intelligence", "machine learning",
@@ -33,30 +31,25 @@ TECH_KEYWORDS = [
     "programming", "data", "robot", "cloud"
 ]
 
-# ====== HELPERS ======
-def load_sent():
-    if os.path.exists(SENT_FILE):
-        with open(SENT_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
-
-def save_sent(sent_links):
-    with open(SENT_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(sent_links), f, ensure_ascii=False)
-
-def send_telegram(message):
+# ====== TELEGRAM ======
+def send_telegram(chat_id, message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(
+    requests.post(
         url,
         data={
-            "chat_id": CHAT_ID,
+            "chat_id": chat_id,
             "text": message,
             "disable_web_page_preview": False
         },
         timeout=10
     )
-    r.raise_for_status()
 
+def get_updates():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    r = requests.get(url, timeout=15)
+    return r.json().get("result", [])
+
+# ====== HELPERS ======
 def is_tech_content(text):
     text = text.lower()
     return any(word in text for word in TECH_KEYWORDS)
@@ -67,34 +60,56 @@ def light_summary(text, max_sentences=2):
     return " ".join(sentences[:max_sentences])
 
 # ====== CORE ======
-def check_feeds():
-    sent_links = load_sent()
+def check_feeds(chat_id):
+    sent_count = 0
 
     for feed_url in ALL_FEEDS:
         feed = feedparser.parse(feed_url)
 
         for entry in feed.entries[:5]:
-            link = entry.link
             title = entry.title
             summary = entry.get("summary", "")
+            link = entry.link
 
-            if link in sent_links:
+            published = entry.get("published_parsed")
+            if published:
+                published_time = datetime(*published[:6], tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - published_time > timedelta(hours=24):
+                    continue
+
+            if not is_tech_content(title + " " + summary):
                 continue
 
-            if is_tech_content(title + " " + summary):
-                tag = "🔬 Research" if "arxiv.org" in link else "🧠 Tech News"
-                message = (
-                    f"{tag}\n\n"
-                    f"{title}\n\n"
-                    f"📝 Summary:\n{light_summary(summary)}\n\n"
-                    f"🔗 {link}"
-                )
-                send_telegram(message)
-                sent_links.add(link)
-                save_sent(sent_links)
+            tag = "🔬 Research" if "arxiv.org" in link else "🧠 Tech News"
+            message = (
+                f"{tag}\n\n"
+                f"{title}\n\n"
+                f"📝 Summary:\n{light_summary(summary)}\n\n"
+                f"🔗 {link}"
+            )
+
+            send_telegram(chat_id, message)
+            sent_count += 1
+
+    if sent_count == 0:
+        send_telegram(chat_id, "ℹ️ لا توجد أخبار تقنية جديدة حاليًا.")
+
+# ====== COMMANDS ======
+def handle_commands():
+    updates = get_updates()
+
+    for update in updates:
+        if "message" not in update:
+            continue
+
+        text = update["message"].get("text", "")
+        chat_id = update["message"]["chat"]["id"]
+
+        if text == "/start":
+            send_telegram(chat_id, "🚀 تم تشغيل البوت، جاري جلب أحدث الأخبار التقنية...")
+            check_feeds(chat_id)
 
 # ====== ENTRY POINT ======
 if RUN_MAIN.lower() == "true":
-    print("🚀 Bot started")
-    check_feeds()
-    send_telegram("✅ Bot test run successful!")
+    print("🚀 Bot running")
+    handle_commands()
