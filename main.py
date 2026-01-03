@@ -1,15 +1,19 @@
 import os
+import json
 import re
+import time
 import requests
 import feedparser
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 # ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-RUN_MAIN = os.environ.get("RUN_MAIN", "true")
+RUN_MAIN = os.environ.get("RUN_MAIN") == "true"
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set")
+
+STATE_FILE = "state.json"
 
 # ====== FEEDS ======
 NEWS_FEEDS = [
@@ -31,7 +35,18 @@ TECH_KEYWORDS = [
     "programming", "data", "robot", "cloud"
 ]
 
-# ====== TELEGRAM ======
+# ====== STATE ======
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"last_run": 0}
+
+def save_state(state):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+
+# ====== HELPERS ======
 def send_telegram(chat_id, message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     requests.post(
@@ -44,12 +59,6 @@ def send_telegram(chat_id, message):
         timeout=10
     )
 
-def get_updates():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    r = requests.get(url, timeout=15)
-    return r.json().get("result", [])
-
-# ====== HELPERS ======
 def is_tech_content(text):
     text = text.lower()
     return any(word in text for word in TECH_KEYWORDS)
@@ -59,23 +68,31 @@ def light_summary(text, max_sentences=2):
     sentences = re.split(r'(?<=[.!؟])\s+', text)
     return " ".join(sentences[:max_sentences])
 
+def entry_time(entry):
+    if hasattr(entry, "published_parsed") and entry.published_parsed:
+        return int(time.mktime(entry.published_parsed))
+    return int(time.time())
+
 # ====== CORE ======
 def check_feeds(chat_id):
-    sent_count = 0
+    state = load_state()
+    last_run = state["last_run"]
+    newest_time = last_run
+
+    sent_any = False
 
     for feed_url in ALL_FEEDS:
         feed = feedparser.parse(feed_url)
 
         for entry in feed.entries[:5]:
+            published_time = entry_time(entry)
+
+            if published_time <= last_run:
+                continue
+
             title = entry.title
             summary = entry.get("summary", "")
             link = entry.link
-
-            published = entry.get("published_parsed")
-            if published:
-                published_time = datetime(*published[:6], tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) - published_time > timedelta(hours=24):
-                    continue
 
             if not is_tech_content(title + " " + summary):
                 continue
@@ -89,27 +106,36 @@ def check_feeds(chat_id):
             )
 
             send_telegram(chat_id, message)
-            sent_count += 1
+            sent_any = True
 
-    if sent_count == 0:
-        send_telegram(chat_id, "ℹ️ لا توجد أخبار تقنية جديدة حاليًا.")
+            if published_time > newest_time:
+                newest_time = published_time
 
-# ====== COMMANDS ======
-def handle_commands():
-    updates = get_updates()
+    if sent_any:
+        save_state({"last_run": newest_time})
 
-    for update in updates:
-        if "message" not in update:
-            continue
+# ====== TELEGRAM LISTENER ======
+def listen_updates():
+    offset = None
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
 
-        text = update["message"].get("text", "")
-        chat_id = update["message"]["chat"]["id"]
+    r = requests.get(url, timeout=20)
+    data = r.json()
 
-        if text == "/start":
-            send_telegram(chat_id, "🚀 تم تشغيل البوت، جاري جلب أحدث الأخبار التقنية...")
-            check_feeds(chat_id)
+    if not data["result"]:
+        return
+
+    update = data["result"][-1]
+    message = update.get("message")
+    if not message:
+        return
+
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "")
+
+    if text == "/start":
+        check_feeds(chat_id)
 
 # ====== ENTRY POINT ======
-if RUN_MAIN.lower() == "true":
-    print("🚀 Bot running")
-    handle_commands()
+if RUN_MAIN:
+    listen_updates()
