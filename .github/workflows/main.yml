@@ -30,7 +30,5 @@ jobs:
       - name: Run bot
         run: python main.py
         env:
-          RUN_MAIN: "true"               # <= بدل __name__
+          RUN_MAIN: "true"
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-
