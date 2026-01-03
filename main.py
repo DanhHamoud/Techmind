@@ -101,7 +101,7 @@ def check_feeds():
 
 
 # ====== ENTRY POINT ======
-if __name__ == "__main__":
+if --name-- == "__main__":
     print("🚀 Bot started")
     check_feeds()
     # تصحيح الخطأ: استدعاء الدالة بشكل صحيح
