@@ -39,11 +39,9 @@ def load_sent():
             return set(json.load(f))
     return set()
 
-
 def save_sent(sent_links):
     with open(SENT_FILE, "w", encoding="utf-8") as f:
         json.dump(list(sent_links), f, ensure_ascii=False)
-
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -52,23 +50,20 @@ def send_telegram(message):
         data={
             "chat_id": CHAT_ID,
             "text": message,
-            "disable_web_page_preview": False,
+            "disable_web_page_preview": False
         },
-        timeout=10,
+        timeout=10
     )
     r.raise_for_status()
-
 
 def is_tech_content(text):
     text = text.lower()
     return any(word in text for word in TECH_KEYWORDS)
 
-
 def light_summary(text, max_sentences=2):
     text = re.sub("<.*?>", "", text)
     sentences = re.split(r'(?<=[.!؟])\s+', text)
     return " ".join(sentences[:max_sentences])
-
 
 # ====== CORE ======
 def check_feeds():
@@ -93,11 +88,9 @@ def check_feeds():
                     f"📝 Summary:\n{light_summary(summary)}\n\n"
                     f"🔗 {link}"
                 )
-
                 send_telegram(message)
                 sent_links.add(link)
                 save_sent(sent_links)
-
 
 # ====== ENTRY POINT ======
 if __name__ == "__main__":
