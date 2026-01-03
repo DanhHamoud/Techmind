@@ -101,8 +101,8 @@ def check_feeds():
 
 
 # ====== ENTRY POINT ======
-if __name__ == "__main__":  
-    print("🚀 Bot started")  
+# ====== ENTRY POINT ======
+if __name__ == "__main__":
+    print("🚀 Bot started")
     check_feeds()
-    # تصحيح الخطأ: استدعاء الدالة بشكل صحيح  # ✅ الآن تعليق
-    send_telegram("✅ Bot test run successfully")
+    send_telegram("✅ Bot test run successful!")
