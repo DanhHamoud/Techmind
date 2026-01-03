@@ -10,12 +10,27 @@ jobs:
   run_bot:
     runs-on: ubuntu-latest
     steps:
+      # 1️⃣ نسخ الريبو
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 2️⃣ تثبيت بايثون
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      # 3️⃣ تثبيت المكتبات المطلوبة
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests feedparser
+
+      # 4️⃣ تشغيل البوت
       - name: Run bot
         run: python main.py
         env:
-          RUN_MAIN: "true"
+          RUN_MAIN: "true"               # <= بدل __name__
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+
