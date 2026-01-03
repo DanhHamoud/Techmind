@@ -9,7 +9,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 if not BOT_TOKEN or not CHAT_ID:
-    raise ValueError("BOT_TOKEN or CHAT_ID not set in environment variables")
+    raise ValueError("BOT_TOKEN or CHAT_ID not set")
 
 # ====== FEEDS ======
 NEWS_FEEDS = [
@@ -24,7 +24,6 @@ RESEARCH_FEEDS = [
 ]
 
 ALL_FEEDS = NEWS_FEEDS + RESEARCH_FEEDS
-
 SENT_FILE = "sent_items.json"
 
 TECH_KEYWORDS = [
@@ -48,7 +47,7 @@ def save_sent(sent_links):
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    response = requests.post(
+    r = requests.post(
         url,
         data={
             "chat_id": CHAT_ID,
@@ -57,7 +56,7 @@ def send_telegram(message):
         },
         timeout=10,
     )
-    response.raise_for_status()
+    r.raise_for_status()
 
 
 def is_tech_content(text):
@@ -100,7 +99,6 @@ def check_feeds():
                 save_sent(sent_links)
 
 
-# ====== ENTRY POINT ======
 # ====== ENTRY POINT ======
 if __name__ == "__main__":
     print("🚀 Bot started")
