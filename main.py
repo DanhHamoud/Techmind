@@ -7,6 +7,7 @@ import feedparser
 # ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
+RUN_MAIN = os.environ.get("RUN_MAIN", "true")  # متغير البيئة بدل __name__
 
 if not BOT_TOKEN or not CHAT_ID:
     raise ValueError("BOT_TOKEN or CHAT_ID not set")
@@ -93,7 +94,7 @@ def check_feeds():
                 save_sent(sent_links)
 
 # ====== ENTRY POINT ======
-if __name__ == "__main__":
+if RUN_MAIN.lower() == "true":
     print("🚀 Bot started")
     check_feeds()
     send_telegram("✅ Bot test run successful!")
