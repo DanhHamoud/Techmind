@@ -4,7 +4,6 @@ import re
 import time
 import requests
 import feedparser
-from datetime import datetime, timezone
 
 # ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -16,23 +15,52 @@ if not BOT_TOKEN:
 STATE_FILE = "state.json"
 
 # ====== FEEDS ======
-NEWS_FEEDS = [
+
+# 📰 مواقع تقنية عربية
+ARABIC_TECH_FEEDS = [
     "https://aitnews.com/feed/",
+    "https://www.tech-wd.com/wd/feed/",
+    "https://www.arageek.com/feed",
+    "https://www.unlimit-tech.com/feed",
+]
+
+# 📰 مواقع أخبار عامة (نفلتر منها التقنية فقط)
+GENERAL_ARABIC_FEEDS = [
+    "https://www.aljazeera.net/aljazeerarss",   # الجزيرة
+    "https://www.alarabiya.net/rss",            # العربية
+    "https://feeds.bbci.co.uk/arabic/rss.xml",  # BBC عربي
+]
+
+# 🌍 مواقع تقنية عالمية
+GLOBAL_FEEDS = [
     "https://techcrunch.com/feed/",
     "https://www.theverge.com/rss/index.xml",
 ]
 
+# 🔬 أبحاث
 RESEARCH_FEEDS = [
     "http://export.arxiv.org/rss/cs.AI",
     "http://export.arxiv.org/rss/cs.LG",
 ]
 
-ALL_FEEDS = NEWS_FEEDS + RESEARCH_FEEDS
+ALL_FEEDS = (
+    ARABIC_TECH_FEEDS
+    + GENERAL_ARABIC_FEEDS
+    + GLOBAL_FEEDS
+    + RESEARCH_FEEDS
+)
 
+# ====== KEYWORDS ======
 TECH_KEYWORDS = [
+    # English
     "ai", "artificial intelligence", "machine learning",
     "deep learning", "cyber", "security", "software",
-    "programming", "data", "robot", "cloud"
+    "programming", "data", "robot", "cloud",
+
+    # Arabic
+    "الذكاء الاصطناعي", "تقنية", "تكنولوجيا",
+    "برمجة", "الأمن السيبراني", "البيانات",
+    "الحوسبة", "التحول الرقمي", "روبوت",
 ]
 
 # ====== STATE ======
@@ -63,8 +91,11 @@ def is_tech_content(text):
     text = text.lower()
     return any(word in text for word in TECH_KEYWORDS)
 
+def clean_text(text):
+    return re.sub("<.*?>", "", text)
+
 def light_summary(text, max_sentences=2):
-    text = re.sub("<.*?>", "", text)
+    text = clean_text(text)
     sentences = re.split(r'(?<=[.!؟])\s+', text)
     return " ".join(sentences[:max_sentences])
 
@@ -79,25 +110,31 @@ def check_feeds(chat_id):
     last_run = state["last_run"]
     newest_time = last_run
 
-    sent_any = False
-
     for feed_url in ALL_FEEDS:
         feed = feedparser.parse(feed_url)
 
-        for entry in feed.entries[:5]:
+        for entry in feed.entries[:6]:
             published_time = entry_time(entry)
 
             if published_time <= last_run:
                 continue
 
-            title = entry.title
+            title = entry.get("title", "")
             summary = entry.get("summary", "")
-            link = entry.link
+            link = entry.get("link", "")
 
             if not is_tech_content(title + " " + summary):
                 continue
 
-            tag = "🔬 Research" if "arxiv.org" in link else "🧠 Tech News"
+            if "arxiv.org" in link:
+                tag = "🔬 Research"
+            elif feed_url in GENERAL_ARABIC_FEEDS:
+                tag = "📰 General Tech"
+            elif feed_url in ARABIC_TECH_FEEDS:
+                tag = "📰 Arabic Tech"
+            else:
+                tag = "🌍 Global Tech"
+
             message = (
                 f"{tag}\n\n"
                 f"{title}\n\n"
@@ -106,27 +143,25 @@ def check_feeds(chat_id):
             )
 
             send_telegram(chat_id, message)
-            sent_any = True
 
             if published_time > newest_time:
                 newest_time = published_time
 
-    if sent_any:
+    if newest_time > last_run:
         save_state({"last_run": newest_time})
 
 # ====== TELEGRAM LISTENER ======
 def listen_updates():
-    offset = None
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-
     r = requests.get(url, timeout=20)
     data = r.json()
 
-    if not data["result"]:
+    if not data.get("result"):
         return
 
     update = data["result"][-1]
     message = update.get("message")
+
     if not message:
         return
 
