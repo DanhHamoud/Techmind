@@ -1,7 +1,6 @@
 import os
 import json
 import re
-import time
 import requests
 import feedparser
 
@@ -12,11 +11,9 @@ RUN_MAIN = os.environ.get("RUN_MAIN") == "true"
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set")
 
-STATE_FILE = "state.json"
+SENT_FILE = "sent_links.json"
 
 # ====== FEEDS ======
-
-# 📰 مواقع تقنية عربية
 ARABIC_TECH_FEEDS = [
     "https://aitnews.com/feed/",
     "https://www.tech-wd.com/wd/feed/",
@@ -24,20 +21,17 @@ ARABIC_TECH_FEEDS = [
     "https://www.unlimit-tech.com/feed",
 ]
 
-# 📰 مواقع أخبار عامة (نفلتر منها التقنية فقط)
 GENERAL_ARABIC_FEEDS = [
-    "https://www.aljazeera.net/aljazeerarss",   # الجزيرة
-    "https://www.alarabiya.net/rss",            # العربية
-    "https://feeds.bbci.co.uk/arabic/rss.xml",  # BBC عربي
+    "https://www.aljazeera.net/aljazeerarss",
+    "https://www.alarabiya.net/rss",
+    "https://feeds.bbci.co.uk/arabic/rss.xml",
 ]
 
-# 🌍 مواقع تقنية عالمية
 GLOBAL_FEEDS = [
     "https://techcrunch.com/feed/",
     "https://www.theverge.com/rss/index.xml",
 ]
 
-# 🔬 أبحاث
 RESEARCH_FEEDS = [
     "http://export.arxiv.org/rss/cs.AI",
     "http://export.arxiv.org/rss/cs.LG",
@@ -52,27 +46,24 @@ ALL_FEEDS = (
 
 # ====== KEYWORDS ======
 TECH_KEYWORDS = [
-    # English
     "ai", "artificial intelligence", "machine learning",
     "deep learning", "cyber", "security", "software",
     "programming", "data", "robot", "cloud",
-
-    # Arabic
     "الذكاء الاصطناعي", "تقنية", "تكنولوجيا",
     "برمجة", "الأمن السيبراني", "البيانات",
-    "الحوسبة", "التحول الرقمي", "روبوت",
+    "التحول الرقمي", "روبوت",
 ]
 
-# ====== STATE ======
-def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"last_run": 0}
+# ====== STORAGE ======
+def load_sent():
+    if os.path.exists(SENT_FILE):
+        with open(SENT_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    return set()
 
-def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f)
+def save_sent(data):
+    with open(SENT_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(data), f, ensure_ascii=False, indent=2)
 
 # ====== HELPERS ======
 def send_telegram(chat_id, message):
@@ -94,36 +85,28 @@ def is_tech_content(text):
 def clean_text(text):
     return re.sub("<.*?>", "", text)
 
-def light_summary(text, max_sentences=2):
+def summary(text):
     text = clean_text(text)
     sentences = re.split(r'(?<=[.!؟])\s+', text)
-    return " ".join(sentences[:max_sentences])
-
-def entry_time(entry):
-    if hasattr(entry, "published_parsed") and entry.published_parsed:
-        return int(time.mktime(entry.published_parsed))
-    return int(time.time())
+    return " ".join(sentences[:2])
 
 # ====== CORE ======
 def check_feeds(chat_id):
-    state = load_state()
-    last_run = state["last_run"]
-    newest_time = last_run
+    sent = load_sent()
+    updated = False
 
     for feed_url in ALL_FEEDS:
         feed = feedparser.parse(feed_url)
 
-        for entry in feed.entries[:6]:
-            published_time = entry_time(entry)
-
-            if published_time <= last_run:
+        for entry in feed.entries[:8]:
+            link = entry.get("link")
+            if not link or link in sent:
                 continue
 
             title = entry.get("title", "")
-            summary = entry.get("summary", "")
-            link = entry.get("link", "")
+            content = title + " " + entry.get("summary", "")
 
-            if not is_tech_content(title + " " + summary):
+            if not is_tech_content(content):
                 continue
 
             if "arxiv.org" in link:
@@ -138,39 +121,32 @@ def check_feeds(chat_id):
             message = (
                 f"{tag}\n\n"
                 f"{title}\n\n"
-                f"📝 Summary:\n{light_summary(summary)}\n\n"
+                f"📝 Summary:\n{summary(entry.get('summary',''))}\n\n"
                 f"🔗 {link}"
             )
 
             send_telegram(chat_id, message)
+            sent.add(link)
+            updated = True
 
-            if published_time > newest_time:
-                newest_time = published_time
+    if updated:
+        save_sent(sent)
 
-    if newest_time > last_run:
-        save_state({"last_run": newest_time})
-
-# ====== TELEGRAM LISTENER ======
+# ====== TELEGRAM ======
 def listen_updates():
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    r = requests.get(url, timeout=20)
-    data = r.json()
+    data = requests.get(url, timeout=20).json()
 
     if not data.get("result"):
         return
 
-    update = data["result"][-1]
-    message = update.get("message")
-
-    if not message:
+    msg = data["result"][-1].get("message")
+    if not msg:
         return
 
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "")
+    if msg.get("text") == "/start":
+        check_feeds(msg["chat"]["id"])
 
-    if text == "/start":
-        check_feeds(chat_id)
-
-# ====== ENTRY POINT ======
+# ====== ENTRY ======
 if RUN_MAIN:
     listen_updates()
