@@ -6,10 +6,10 @@ import feedparser
 
 # ====== ENV ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-RUN_MAIN = os.environ.get("RUN_MAIN") == "true"
+CHAT_ID = os.environ.get("CHAT_ID")
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not set")
+if not BOT_TOKEN or not CHAT_ID:
+    raise ValueError("BOT_TOKEN or CHAT_ID not set")
 
 SENT_FILE = "sent_links.json"
 
@@ -44,7 +44,6 @@ ALL_FEEDS = (
     + RESEARCH_FEEDS
 )
 
-# ====== KEYWORDS ======
 TECH_KEYWORDS = [
     "ai", "artificial intelligence", "machine learning",
     "deep learning", "cyber", "security", "software",
@@ -66,12 +65,12 @@ def save_sent(data):
         json.dump(list(data), f, ensure_ascii=False, indent=2)
 
 # ====== HELPERS ======
-def send_telegram(chat_id, message):
+def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     requests.post(
         url,
         data={
-            "chat_id": chat_id,
+            "chat_id": CHAT_ID,
             "text": message,
             "disable_web_page_preview": False
         },
@@ -91,7 +90,7 @@ def summary(text):
     return " ".join(sentences[:2])
 
 # ====== CORE ======
-def check_feeds(chat_id):
+def check_feeds():
     sent = load_sent()
     updated = False
 
@@ -125,28 +124,14 @@ def check_feeds(chat_id):
                 f"🔗 {link}"
             )
 
-            send_telegram(chat_id, message)
+            send_telegram(message)
             sent.add(link)
             updated = True
 
     if updated:
         save_sent(sent)
 
-# ====== TELEGRAM ======
-def listen_updates():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    data = requests.get(url, timeout=20).json()
-
-    if not data.get("result"):
-        return
-
-    msg = data["result"][-1].get("message")
-    if not msg:
-        return
-
-    if msg.get("text") == "/start":
-        check_feeds(msg["chat"]["id"])
-
-# ====== ENTRY ======
-if RUN_MAIN:
-    listen_updates()
+# ====== ENTRY POINT ======
+if name == "__main__":
+    print("🚀 Bot started")
+    check_feeds()
